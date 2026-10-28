@@ -14,7 +14,7 @@
    Video window. Address: #v=<video id> or #list=<playlist id>, plus &i=<playlist index>&s=<start seconds>.
    It tells the app where you are (so the next session resumes there) and takes play/pause from it. Nothing is stored here. */
 var q = {}; location.hash.slice(1).split('&').forEach(function (kv) { var a = kv.split('='); if (a[0]) q[a[0]] = decodeURIComponent(a[1] || ''); });
-var ok = function (x) { return /^[\w-]{6,64}$/.test(x || ''); }, P = null, last = '';
+var ok = function (x) { return /^[\w-]{6,64}$/.test(x || ''); }, P = null, last = '', bad = 0;
 function tell(m) { m.wd = 1; try { parent.postMessage(m, '*'); } catch (e) {} }
 function pos(st) {
   if (!P || !P.getCurrentTime) return;
@@ -24,12 +24,16 @@ function pos(st) {
 window.onYouTubeIframeAPIReady = function () {
   var s = +q.s || 0, i = +q.i || 0, pv = { playsinline: 1, rel: 0, modestbranding: 1, start: s, origin: location.origin };
   if (ok(q.list)) { pv.listType = 'playlist'; pv.list = q.list; pv.index = i; }
-  P = new YT.Player('p', { width: '100%', height: '100%', videoId: ok(q.list) ? undefined : (ok(q.v) ? q.v : undefined), playerVars: pv,
-    events: {
+  var o = { width: '100%', height: '100%', playerVars: pv, events: {
       onReady: function (e) { if (ok(q.list) && (i || s)) try { e.target.cuePlaylist({ listType: 'playlist', list: q.list, index: i, startSeconds: s }); } catch (x) {} tell({ t: 'ready' }); },
       onStateChange: function (e) { pos(e.data); },
-      onError: function (e) { tell({ t: 'err', code: e.data }); }
-    } });
+      onError: function (e) {   /* a playlist video that can't play here (blocked from other sites, region, removed): skip to the next one */
+        tell({ t: 'err', code: e.data });
+        if (ok(q.list) && P && P.nextVideo && ++bad < 6) setTimeout(function () { try { P.nextVideo(); } catch (x) {} }, 400);
+      }
+    } };
+  if (!ok(q.list) && ok(q.v)) o.videoId = q.v;   /* a playlist must have no videoId key at all, or the player says "Invalid video id" */
+  P = new YT.Player('p', o);
 };
 setInterval(function () { pos(); }, 3000);
 window.addEventListener('message', function (e) {
