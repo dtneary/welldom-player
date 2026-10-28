@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>WellDom player</title>
+<style>html,body{margin:0;height:100%;background:#000}#p{position:fixed;inset:0;width:100%;height:100%}</style>
+</head>
+<body>
+<div id="p"></div>
+<script>
+/* WellDom video player: YouTube only plays embedded videos on pages with a web address, so the WellDom app shows this page in its
+   Video window. Address: #v=<video id> or #list=<playlist id>, plus &i=<playlist index>&s=<start seconds>.
+   It tells the app where you are (so the next session resumes there) and takes play/pause from it. Nothing is stored here. */
+var q = {}; location.hash.slice(1).split('&').forEach(function (kv) { var a = kv.split('='); if (a[0]) q[a[0]] = decodeURIComponent(a[1] || ''); });
+var ok = function (x) { return /^[\w-]{6,64}$/.test(x || ''); }, P = null, last = '';
+function tell(m) { m.wd = 1; try { parent.postMessage(m, '*'); } catch (e) {} }
+function pos(st) {
+  if (!P || !P.getCurrentTime) return;
+  var m = { t: 'pos', s: Math.floor(P.getCurrentTime() || 0), i: q.list && P.getPlaylistIndex ? Math.max(0, P.getPlaylistIndex()) : 0, st: st == null ? P.getPlayerState() : st };
+  var k = m.s + '|' + m.i + '|' + m.st; if (k !== last) { last = k; tell(m); }
+}
+window.onYouTubeIframeAPIReady = function () {
+  var s = +q.s || 0, i = +q.i || 0, pv = { playsinline: 1, rel: 0, modestbranding: 1, start: s, origin: location.origin };
+  if (ok(q.list)) { pv.listType = 'playlist'; pv.list = q.list; pv.index = i; }
+  P = new YT.Player('p', { width: '100%', height: '100%', videoId: ok(q.list) ? undefined : (ok(q.v) ? q.v : undefined), playerVars: pv,
+    events: {
+      onReady: function (e) { if (ok(q.list) && (i || s)) try { e.target.cuePlaylist({ listType: 'playlist', list: q.list, index: i, startSeconds: s }); } catch (x) {} tell({ t: 'ready' }); },
+      onStateChange: function (e) { pos(e.data); },
+      onError: function (e) { tell({ t: 'err', code: e.data }); }
+    } });
+};
+setInterval(function () { pos(); }, 3000);
+window.addEventListener('message', function (e) {
+  var d = e.data; if (!d || !d.wd || !P) return;
+  try { if (d.cmd === 'pause') P.pauseVideo(); else if (d.cmd === 'play') P.playVideo(); } catch (x) {}
+});
+var sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(sc);
+</script>
+</body>
+</html>
